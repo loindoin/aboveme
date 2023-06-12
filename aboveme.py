@@ -50,6 +50,9 @@ def on_connect(client, userdata, flags, rc):
 def setupMqtt():
     # Create an MQTT client instance
     client = mqtt.Client()
+    
+    # enable TLS for secure connection
+    client.tls_set(tls_version=mqtt.ssl.PROTOCOL_TLS)
 
     # Set username and password if required by your broker
     client.username_pw_set(username, password)
