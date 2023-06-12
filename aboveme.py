@@ -52,7 +52,8 @@ def setupMqtt():
     client = mqtt.Client()
     
     # enable TLS for secure connection
-    client.tls_set(tls_version=mqtt.ssl.PROTOCOL_TLS)
+    if broker_port == 8883:
+        client.tls_set(tls_version=mqtt.ssl.PROTOCOL_TLS)
 
     # Set username and password if required by your broker
     client.username_pw_set(username, password)
