@@ -48,7 +48,7 @@ def on_connect(client, userdata, flags, rc, protocol): # added protocol to help 
     print("Connected to MQTT broker with result code " + str(rc))
 
 
-def setupMqtt():
+def setup_mqtt():
     # Create an MQTT client instance 
     client = mqtt.Client(client_id="", userdata=None, protocol=mqtt.MQTTv5) # specified a few args in the client creation for TLS
     
