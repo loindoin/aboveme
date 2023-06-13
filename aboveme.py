@@ -44,13 +44,17 @@ topic = MQTT_TOPIC
 
 
 # Callback function when connection is established
-def on_connect(client, userdata, flags, rc):
+def on_connect(client, userdata, flags, rc, protocol): # added protocol to help with TLS connection
     print("Connected to MQTT broker with result code " + str(rc))
 
 
-def setup_mqtt():
-    # Create an MQTT client instance
-    client = mqtt.Client()
+def setupMqtt():
+    # Create an MQTT client instance 
+    client = mqtt.Client(client_id="", userdata=None, protocol=mqtt.MQTTv5) # specified a few args in the client creation for TLS
+    
+    # enable TLS for secure connection - Test if using the standard MQTT TLS port 8883 and set the TLS version to use
+    if broker_port == 8883:
+        client.tls_set(tls_version=mqtt.ssl.PROTOCOL_TLS)
 
     # Set username and password if required by your broker
     client.username_pw_set(username, password)
