@@ -97,6 +97,10 @@ def extract_flight_information(flight_icao):
                     'iata', 'No Data Available')
                 return_data.update(
                     {"Arrival Airport": f"{arrival_airport} ({arrival_iata_code})"})
+        if json_data['aircraft']['images']['thumbnails'][0] is not None:
+                image_url = json_data['aircraft']['images']['thumbnails'][0].get(
+                    'src', 'No Data Available')
+                return_data.update({"ent_pic": str(image_url)})    
 
         # The following are not always available, so i don't actually use them - but they're below in case you ever want to use:
         # if json_data['airport']['destination']['info'] is not None:
@@ -172,7 +176,6 @@ def check_above_me(mqtt_client):
                         "longitude": flight_longitude,
                         "altitude": flight_altitude,
                         "speed": flight_speed,
-                        "entity_picture": "https://png.pngtree.com/png-clipart/20191122/original/pngtree-airplane-icon-png-image_5172917.jpg",
                         "time_seen":  str(datetime.now())
                     }
 
