@@ -13,35 +13,33 @@ config = configparser.ConfigParser()
 configFile = '/app/config/config.cfg'
 config.read(configFile)
 
+# Static Config stuff
 QUERY_URL_PART1 = config['default'].get('QUERY_URL_PART1')
 QUERY_URL_PART2 = config['default'].get('QUERY_URL_PART2')
-BOUNDS = config['default'].get('BOUNDS')
 EXTRA_DATA_URL = config['default'].get('EXTRA_DATA_URL')
 USER_AGENT = config['default'].get('USER_AGENT')
 BROKER_ADDRESS = config['default'].get('BROKER_ADDRESS')
 BROKER_PORT = config['default'].get('BROKER_PORT')
 BROKER_USERNAME = config['default'].get('BROKER_USERNAME')
 BROKER_PASSWORD = config['default'].get('BROKER_PASSWORD')
-MQTT_TOPIC = config['default'].get('MQTT_TOPIC')
+MQTT_TOPIC_PREFIX = config['default'].get('MQTT_TOPIC_PREFIX')
 SLEEP = config['default'].get('SLEEP')
 
+# Bounds is a json string to allow for multiple bound boxes.
+BOUNDS = config['geoboxes'].get('BOUNDS')
+json_bounds = json.loads(BOUNDS) 
 
-if any(value == '' for value in [QUERY_URL_PART1, QUERY_URL_PART2, BOUNDS, EXTRA_DATA_URL, USER_AGENT, BROKER_ADDRESS, BROKER_PORT, BROKER_USERNAME, BROKER_PASSWORD, MQTT_TOPIC, SLEEP]):
-    print("Error: Configuration file is missing required values.")
-    sys.exit(1)
-# Dictionary to store recently seen planes  and their timestamps, so i don't double notify if they are traveling slow
-recent_planes = {}
-url = QUERY_URL_PART1+BOUNDS+QUERY_URL_PART2
-headers = {
-    "User-Agent": USER_AGENT
-}
-# MQTT broker details
+# remapping static configs for use later on
 broker_address = BROKER_ADDRESS
 broker_port = BROKER_PORT
 username = BROKER_USERNAME
 password = BROKER_PASSWORD
-topic = MQTT_TOPIC
+headers = {
+    "User-Agent": USER_AGENT
+}
 
+# Dictionary to store recently seen planes  and their timestamps, so i don't double notify if they are traveling slow
+recent_planes = {}
 
 # Callback function when connection is established
 def on_connect(client, userdata, flags, rc, protocol): # added protocol to help with TLS connection
@@ -123,7 +121,7 @@ def extract_flight_information(flight_icao):
         return return_data
 
 
-def check_above_me(mqtt_client):
+def check_above_me(mqtt_client,url,topic):
   
     try:
         # Fetch JSON data from the URL with the specified headers
@@ -138,7 +136,7 @@ def check_above_me(mqtt_client):
         # This is really just debug info, if there are no planes going overhead, how do we know if the query is working?
         print(f"Time: { str(datetime.now())}\nFull Count: {full_count}")
         # print(f"Total Stats: {total_stats}")
-        # print(f"Visible Stats: {visible_stats}")
+        print(f"Visible Stats: {visible_stats}")
         # print("-----")
 
         # Extract flight data
@@ -148,16 +146,28 @@ def check_above_me(mqtt_client):
 
                 if not have_seen_recently(flight_icao):
 
-                    if flight_data[7] is not None:
-                        flight_callsign = flight_data[7]
+                    if flight_data[0] is not None:
+                        flight_adsb = flight_data[0]
                     if flight_data[1] is not None:
                         flight_latitude = flight_data[1]
                     if flight_data[2] is not None:
                         flight_longitude = flight_data[2]
                     if flight_data[3] is not None:
-                        flight_altitude = flight_data[3]
+                        flight_heading = flight_data[3]
                     if flight_data[4] is not None:
-                        flight_speed = flight_data[4]
+                        flight_altitude = flight_data[4]
+                    if flight_data[5] is not None:
+                        flight_speed = flight_data[5]
+                    if flight_data[6] is not None:
+                        flight_squawk = flight_data[6]
+                    if flight_data[7] is not None:
+                        flight_callsign = flight_data[7]
+                    if flight_data[8] is not None:
+                        flight_aircraft = flight_data[8]
+                    if flight_data[9] is not None:
+                        flight_registration = flight_data[9]
+                    
+                    flight_link = 'https://www.flightradar24.com/'+flight_icao
 
                     # again, more debug information
                     # print(f"Flight ICAO: {flight_icao}")
@@ -171,11 +181,17 @@ def check_above_me(mqtt_client):
                     # dict to begin building structure to convert to json and send via mqtt
                     data = {
                         "flight_icao": flight_icao,
+                        "adsb-code": flight_adsb,
                         "callsign": flight_callsign,
                         "latitude": flight_latitude,
                         "longitude": flight_longitude,
                         "altitude": flight_altitude,
                         "speed": flight_speed,
+                        "heading": flight_heading,
+                        "squawk": flight_squawk,
+                        "aircraft_type": flight_aircraft,
+                        "registration": flight_registration,
+                        "link": flight_link,
                         "time_seen":  str(datetime.now())
                     }
 
@@ -187,11 +203,11 @@ def check_above_me(mqtt_client):
                     data.update(flight_information)
 
                     if data['Flight Number'] is not None:
-
                         # convert to json
                         json_message = json.dumps(data)
                         # Publish the JSON message to the MQTT broker
                         mqtt_client.publish(topic, json_message)
+                        
 
     except Exception as e:
         print(f"An error occurred: {str(e)}")
@@ -201,8 +217,6 @@ def check_above_me(mqtt_client):
 
 # some very basic caching of planes seen in the past 60 seconds
 # this is to manage a slower plane being notified multiple times as it passes over
-
-
 def have_seen_recently(flight_icao):
     
     current_time = time.time()
@@ -228,10 +242,27 @@ def have_seen_recently(flight_icao):
 
 def main():
     mqtt_client = setup_mqtt()
+
     while True:
         try:
+            # set up loop through geoboxes from config json
+            for box in json_bounds["geobox"]:
+                COORDS = json_bounds["geobox"][box][0]
+                MQTT_TOPIC = box
+                url = QUERY_URL_PART1 + COORDS + QUERY_URL_PART2
+                TOPIC = MQTT_TOPIC_PREFIX + MQTT_TOPIC
+                
+                if any(value == '' for value in [QUERY_URL_PART1, QUERY_URL_PART2, BOUNDS, COORDS, EXTRA_DATA_URL, USER_AGENT, BROKER_ADDRESS, BROKER_PORT, BROKER_USERNAME, BROKER_PASSWORD, MQTT_TOPIC, SLEEP, TOPIC]):
+                    print("Error: Configuration file is missing required values.")
+                    sys.exit(1)
+                
+                # another set of debug print statements
+                # print('-----------------')
+                print("Checking " + TOPIC)
+                # print(COORDS)
+                # print(url)
 
-            check_above_me(mqtt_client)
+                check_above_me(mqtt_client,url,TOPIC)
 
             # Wait for x seconds before the next query
             time.sleep(int(SLEEP))
@@ -241,6 +272,5 @@ def main():
             # try again after the normal sleep period
             time.sleep(int(SLEEP))
 
-
 if __name__ == "__main__":
-    main()
+        main()
